@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Twitter Clone - Profile</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+  <header class="bg-white shadow p-4 flex justify-between items-center">
+    <h1 class="text-xl font-bold">Twitter Clone</h1>
+    <button id="logout-btn" class="text-red-500 hover:underline">Logout</button>
+  </header>
+  <main class="flex-grow max-w-2xl mx-auto p-4">
+    <section class="mb-6">
+      <h2 id="profile-username" class="text-2xl font-bold mb-4"></h2>
+      <div id="follow-section" class="mb-4">
+        <button id="follow-btn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition hidden"></button>
+      </div>
+    </section>
+    <section id="tweets" class="space-y-4">
+      <!-- User tweets will be appended here -->
+    </section>
+  </main>
+
+  <script>
+    const token = localStorage.getItem('token');
+    const loggedInUsername = localStorage.getItem('username');
+    if (!token) {
+      window.location.href = 'index.html';
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const profileUsername = urlParams.get('username');
+
+    const profileUsernameEl = document.getElementById('profile-username');
+    const tweetsEl = document.getElementById('tweets');
+    const followBtn = document.getElementById('follow-btn');
+    const followSection = document.getElementById('follow-section');
+    const logoutBtn = document.getElementById('logout-btn');
+
+    profileUsernameEl.textContent = profileUsername;
+
+    async function fetchProfile() {
+      try {
+        const res = await fetch(`http://localhost:3000/profile/${profileUsername}`, {
+          headers: { 'Authorization': token }
+        });
+        if (!res.ok) throw new Error('Failed to fetch profile');
+        const data = await res.json();
+        tweetsEl.innerHTML = '';
+        data.tweets.forEach(tweet => {
+          const tweetEl = document.createElement('div');
+          tweetEl.className = 'bg-white p-4 rounded shadow';
+          tweetEl.innerHTML = `
+            <div class="flex items-center space-x-2 mb-2">
+              <i class="fas fa-user-circle text-2xl text-gray-600"></i>
+              <span class="font-semibold text-blue-600">${profileUsername}</span>
+              <span class="text-gray-500 text-sm">${new Date(tweet.timestamp).toLocaleString()}</span>
+            </div>
+            <p class="text-gray-800">${tweet.content}</p>
+          `;
+          tweetsEl.appendChild(tweetEl);
+        });
+        if (profileUsername !== loggedInUsername) {
+          checkFollowing();
+        } else {
+          followSection.style.display = 'none';
+        }
+      } catch (err) {
+        tweetsEl.innerHTML = '<p class="text-red-500">Error loading profile.</p>';
+      }
+    }
+
+    async function checkFollowing() {
+      try {
+        const res = await fetch('http://localhost:3000/timeline', {
+          headers: { 'Authorization': token }
+        });
+        if (!res.ok) throw new Error('Failed to fetch timeline');
+        const timelineTweets = await res.json();
+        // Check if any tweet is from profile user to infer following (simplified)
+        const isFollowing = timelineTweets.some(t => t.username === profileUsername);
+        followBtn.textContent = isFollowing ? 'Unfollow' : 'Follow';
+        followBtn.classList.remove('hidden');
+        followBtn.onclick = () => {
+          if (isFollowing) {
+            unfollowUser();
+          } else {
+            followUser();
+          }
+        };
+      } catch (err) {
+        followBtn.classList.add('hidden');
+      }
+    }
+
+    async function followUser() {
+      try {
+        const res = await fetch('http://localhost:3000/follow', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': token },
+          body: JSON.stringify({ userIdToFollow: await getUserId(profileUsername) })
+        });
+        if (!res.ok) throw new Error('Failed to follow user');
+        followBtn.textContent = 'Unfollow';
+      } catch (err) {
+        alert('Error following user');
+      }
+    }
+
+    async function unfollowUser() {
+      try {
+        const res = await fetch('http://localhost:3000/unfollow', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': token },
+          body: JSON.stringify({ userIdToUnfollow: await getUserId(profileUsername) })
+        });
+        if (!res.ok) throw new Error('Failed to unfollow user');
+        followBtn.textContent = 'Follow';
+      } catch (err) {
+        alert('Error unfollowing user');
+      }
+    }
+
+    async function getUserId(username) {
+      // Since backend does not provide userId by username directly, we fetch profile and get userId from tweets
+      try {
+        const res = await fetch(`http://localhost:3000/profile/${username}`, {
+          headers: { 'Authorization': token }
+        });
+        if (!res.ok) throw new Error('Failed to fetch userId');
+        const data = await res.json();
+        if (data.tweets.length > 0) {
+          return data.tweets[0].userId;
+        }
+        // If no tweets, fallback: find userId from backend users list (not implemented)
+        return null;
+      } catch {
+        return null;
+      }
+    }
+
+    logoutBtn.addEventListener('click', async () => {
+      try {
+        await fetch('http://localhost:3000/logout', {
+          method: 'POST',
+          headers: { 'Authorization': token }
+        });
+      } catch (err) {
+        // ignore errors on logout
+      }
+      localStorage.removeItem('token');
+      localStorage.removeItem('username');
+      window.location.href = 'index.html';
+    });
+
+    fetchProfile();
+  </script>
+</body>
+</html>
